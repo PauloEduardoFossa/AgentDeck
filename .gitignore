@@ -1,0 +1,7 @@
+Win32/
+*.dcu
+*.local
+*.identcache
+__history/
+*.stat
+*.res
