@@ -4,11 +4,27 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
-  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.StdCtrls,
-  Vcl.Menus, System.Generics.Collections, System.DateUtils, System.StrUtils,
-  uSessionStatus, uServiceControl, uBatRunner, uHookServer;
+  System.Types, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
+  Vcl.StdCtrls, Vcl.Buttons, Vcl.Menus, System.Generics.Collections, System.DateUtils,
+  System.StrUtils, uSessionStatus, uServiceControl, uBatRunner, uHookServer;
 
 type
+  // TSpeedButton não publica Color (protected em TGraphicControl); sem isso
+  // não dá pra pintar o botão de comando com a cor de fundo do mockup.
+  TBotaoComando = class(TSpeedButton)
+  published
+    property Color;
+  end;
+
+  // Objeto guardado em FListaSessoes.Items.Objects[i]: precisa ser liberado
+  // a cada atualização (ver AtualizarSessoes/LimparItensSessoes).
+  TItemSessaoUI = class
+    SessionId: string;
+    Cwd: string;
+    Status: TStatusSessao;
+    UltimoEvento: TDateTime;
+  end;
+
   TFormPrincipal = class(TForm)
     TrayIcon: TTrayIcon;
     TimerAtualiza: TTimer;
@@ -16,6 +32,7 @@ type
     ItemAbrir: TMenuItem;
     ItemSair: TMenuItem;
     procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
     procedure TrayIconDblClick(Sender: TObject);
     procedure TimerAtualizaTimer(Sender: TObject);
     procedure ItemAbrirClick(Sender: TObject);
@@ -26,6 +43,7 @@ type
     FLblModoDev: TLabel;
     FMemoServicos: TMemo;
     FScrollComandos: TScrollBox;
+    FDotHooks: TShape;
     FAtualizandoModoDev: Boolean;
     FBats: TArray<TBatInfo>;
 
@@ -34,6 +52,7 @@ type
     procedure AtualizarSessoes;
     procedure AtualizarModoDev;
     procedure MontarBotoesComandos;
+    procedure LimparItensSessoes;
     procedure ListaSessoesDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
     procedure BtnModoDevClick(Sender: TObject);
     procedure BotaoBatClick(Sender: TObject);
@@ -53,10 +72,26 @@ implementation
 {$R *.dfm}
 
 const
-  CorOcioso = $00A46A3B;         // verde (BGR)
-  CorProcessando = $000AC8FF;    // amarelo (BGR)
-  CorEsperandoPermissao = $002222D0; // vermelho (BGR)
   SegundosLimiteSessaoInativa = 12 * 3600;
+  AlturaCabecalho = 48;
+
+  // Paleta do mockup (Artifact "AgentDeck", aprovado em 25/08/2026).
+  // Convertida de #RRGGBB pra TColor ($00BBGGRR — bytes invertidos).
+  ClrBgPanel     = $00231B16; // #161b23 fundo do painel
+  ClrBgPanel2    = $002C221C; // #1c222c cards (sessão, dev-mode)
+  ClrBgPanel3    = $00362821; // #212836 cabeçalho
+  ClrBorder      = $00403129; // #29313f linha de borda
+  ClrBorderSoft  = $00372A23; // #232a37 divisor suave
+  ClrText        = $00F1EBE7; // #e7ebf1 texto principal
+  ClrTextMuted   = $00A69389; // #8993a6 texto secundário
+  ClrTextFaint   = $0077655C; // #5c6577 texto apagado
+  ClrAccent      = $003DA0F2; // #f2a03d âmbar (marca, toggle ligado)
+  ClrOk          = $008ECF3E; // #3ecf8e verde (ocioso)
+  ClrOkDim       = $001F2616; // fundo do pill verde
+  ClrBusy        = $00FF965B; // #5b96ff azul (processando)
+  ClrBusyDim     = $002F2016; // fundo do pill azul
+  ClrWarn        = $006B6BFF; // #ff6b6b vermelho (esperando permissão)
+  ClrWarnDim     = $001A1A2F; // fundo do pill vermelho
 
 function TextoStatus(Status: TStatusSessao): string;
 begin
@@ -69,29 +104,75 @@ begin
   end;
 end;
 
-function CorStatus(Status: TStatusSessao): TColor;
+function CorPrincipalStatus(Status: TStatusSessao): TColor;
 begin
   case Status of
-    ssOcioso: Result := CorOcioso;
-    ssProcessando: Result := CorProcessando;
-    ssEsperandoPermissao: Result := CorEsperandoPermissao;
+    ssOcioso: Result := ClrOk;
+    ssProcessando: Result := ClrBusy;
   else
-    Result := clBtnFace;
+    Result := ClrWarn;
   end;
+end;
+
+function CorFundoStatus(Status: TStatusSessao): TColor;
+begin
+  case Status of
+    ssOcioso: Result := ClrOkDim;
+    ssProcessando: Result := ClrBusyDim;
+  else
+    Result := ClrWarnDim;
+  end;
+end;
+
+function TempoRelativo(Segundos: Int64): string;
+begin
+  if Segundos < 60 then
+    Result := Format('há %ds', [Segundos])
+  else if Segundos < 3600 then
+    Result := Format('há %dm', [Segundos div 60])
+  else
+    Result := Format('há %dh', [Segundos div 3600]);
+end;
+
+// Corta pelo início (mantendo o final visível) até caber em LarguraMax —
+// equivalente ao truque de ellipsis-à-esquerda usado no mockup HTML.
+function TruncarInicio(Canvas: TCanvas; const Texto: string; LarguraMax: Integer): string;
+begin
+  Result := Texto;
+  if Canvas.TextWidth(Result) <= LarguraMax then
+    Exit;
+  while (Length(Result) > 1) and (Canvas.TextWidth('...' + Result) > LarguraMax) do
+    Delete(Result, 1, 1);
+  Result := '...' + Result;
+end;
+
+function CategoriaBat(const Nome: string): string;
+begin
+  if Nome.StartsWith('Compilar') then
+    Result := 'Compilar'
+  else if Nome.StartsWith('Serviços') then
+    Result := 'Serviços'
+  else if Nome.StartsWith('SVN') then
+    Result := 'SVN'
+  else
+    Result := 'Outros';
 end;
 
 procedure TFormPrincipal.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
   // Sem isso o form aparece na barra de tarefas: WS_EX_TOOLWINDOW tira o
-  // botao de la, restando so o icone da bandeja pra abrir/fechar o painel.
+  // botão de lá, restando só o ícone da bandeja pra abrir/fechar o painel.
   Params.ExStyle := Params.ExStyle or WS_EX_TOOLWINDOW;
 end;
 
 procedure TFormPrincipal.FormCreate(Sender: TObject);
 begin
   BorderStyle := bsNone;
-  Color := clWindow;
+  Color := ClrBgPanel;
+  Font.Name := 'Segoe UI';
+  Font.Size := 9;
+  Font.Color := ClrText;
 
   MontarLayout;
   PosicionarNaLateral;
@@ -107,8 +188,17 @@ begin
     IniciarServidorHooks;
   except
     on E: Exception do
+    begin
+      FDotHooks.Brush.Color := ClrWarn;
+      FDotHooks.Pen.Color := ClrWarn;
       MostrarBalao('AgentDeck', 'Servidor de hooks não iniciou: ' + E.Message, bfError);
+    end;
   end;
+end;
+
+procedure TFormPrincipal.FormDestroy(Sender: TObject);
+begin
+  LimparItensSessoes;
 end;
 
 procedure TFormPrincipal.MostrarBalao(const Titulo, Texto: string; Flags: TBalloonFlags);
@@ -129,73 +219,146 @@ end;
 
 procedure TFormPrincipal.MontarLayout;
 var
+  PnlHeader: TPanel;
+  Marca: TShape;
+  LblApp, LblHook: TLabel;
   LblSessoes, LblModoDevTitulo, LblComandos: TLabel;
-  Divisor1, Divisor2: TBevel;
+  Divisor1, Divisor2: TPanel;
+  Y: Integer;
 begin
+  PnlHeader := TPanel.Create(Self);
+  PnlHeader.Parent := Self;
+  PnlHeader.BevelOuter := bvNone;
+  PnlHeader.Color := ClrBgPanel3;
+  PnlHeader.SetBounds(0, 0, ClientWidth, AlturaCabecalho);
+  PnlHeader.Anchors := [akLeft, akTop, akRight];
+
+  Marca := TShape.Create(Self);
+  Marca.Parent := PnlHeader;
+  Marca.Shape := stRoundRect;
+  Marca.Brush.Color := ClrAccent;
+  Marca.Pen.Color := ClrAccent;
+  Marca.SetBounds(14, 11, 26, 26);
+
+  LblApp := TLabel.Create(Self);
+  LblApp.Parent := PnlHeader;
+  LblApp.Caption := 'AgentDeck';
+  LblApp.Font.Style := [fsBold];
+  LblApp.Font.Size := 11;
+  LblApp.Font.Color := ClrText;
+  LblApp.SetBounds(50, 8, 220, 18);
+
+  FDotHooks := TShape.Create(Self);
+  FDotHooks.Parent := PnlHeader;
+  FDotHooks.Shape := stCircle;
+  FDotHooks.Brush.Color := ClrOk;
+  FDotHooks.Pen.Color := ClrOk;
+  FDotHooks.SetBounds(50, 30, 7, 7);
+
+  LblHook := TLabel.Create(Self);
+  LblHook.Parent := PnlHeader;
+  LblHook.Caption := 'hooks :47311';
+  LblHook.Font.Name := 'Consolas';
+  LblHook.Font.Size := 8;
+  LblHook.Font.Color := ClrTextFaint;
+  LblHook.SetBounds(62, 27, 180, 14);
+
+  Y := AlturaCabecalho + 12;
+
   LblSessoes := TLabel.Create(Self);
   LblSessoes.Parent := Self;
-  LblSessoes.Caption := 'Sessões Claude Code';
+  LblSessoes.Caption := 'SESSÕES CLAUDE CODE';
   LblSessoes.Font.Style := [fsBold];
-  LblSessoes.SetBounds(12, 12, 300, 18);
+  LblSessoes.Font.Size := 8;
+  LblSessoes.Font.Color := ClrTextMuted;
+  LblSessoes.SetBounds(14, Y, 300, 16);
 
   FListaSessoes := TListBox.Create(Self);
   FListaSessoes.Parent := Self;
   FListaSessoes.Style := lbOwnerDrawFixed;
-  FListaSessoes.ItemHeight := 34;
+  FListaSessoes.ItemHeight := 42;
+  FListaSessoes.BorderStyle := bsNone;
+  FListaSessoes.Color := ClrBgPanel;
   FListaSessoes.OnDrawItem := ListaSessoesDrawItem;
-  FListaSessoes.SetBounds(12, 34, ClientWidth - 24, 220);
+  FListaSessoes.SetBounds(12, Y + 18, ClientWidth - 24, 190);
   FListaSessoes.Anchors := [akLeft, akTop, akRight];
 
-  Divisor1 := TBevel.Create(Self);
+  Y := Y + 18 + 190 + 12;
+
+  Divisor1 := TPanel.Create(Self);
   Divisor1.Parent := Self;
-  Divisor1.Shape := bsTopLine;
-  Divisor1.SetBounds(12, 264, ClientWidth - 24, 8);
+  Divisor1.BevelOuter := bvNone;
+  Divisor1.Color := ClrBorderSoft;
+  Divisor1.SetBounds(12, Y, ClientWidth - 24, 1);
   Divisor1.Anchors := [akLeft, akTop, akRight];
+
+  Y := Y + 13;
 
   LblModoDevTitulo := TLabel.Create(Self);
   LblModoDevTitulo.Parent := Self;
-  LblModoDevTitulo.Caption := 'Modo Desenvolvimento';
+  LblModoDevTitulo.Caption := 'MODO DESENVOLVIMENTO';
   LblModoDevTitulo.Font.Style := [fsBold];
-  LblModoDevTitulo.SetBounds(12, 280, 300, 18);
+  LblModoDevTitulo.Font.Size := 8;
+  LblModoDevTitulo.Font.Color := ClrTextMuted;
+  LblModoDevTitulo.SetBounds(14, Y, 300, 16);
+
+  Y := Y + 20;
 
   FLblModoDev := TLabel.Create(Self);
   FLblModoDev.Parent := Self;
   FLblModoDev.Caption := '...';
-  FLblModoDev.SetBounds(12, 302, ClientWidth - 24, 18);
+  FLblModoDev.Font.Style := [fsBold];
+  FLblModoDev.SetBounds(14, Y, ClientWidth - 160, 18);
   FLblModoDev.Anchors := [akLeft, akTop, akRight];
 
   FBtnModoDev := TButton.Create(Self);
   FBtnModoDev.Parent := Self;
   FBtnModoDev.Caption := 'Ativar';
   FBtnModoDev.OnClick := BtnModoDevClick;
-  FBtnModoDev.SetBounds(12, 324, 140, 28);
+  FBtnModoDev.SetBounds(ClientWidth - 108, Y - 3, 96, 26);
+  FBtnModoDev.Anchors := [akTop, akRight];
+
+  Y := Y + 30;
 
   FMemoServicos := TMemo.Create(Self);
   FMemoServicos.Parent := Self;
   FMemoServicos.ReadOnly := True;
   FMemoServicos.BorderStyle := bsNone;
-  FMemoServicos.Color := clWindow;
+  FMemoServicos.Color := ClrBgPanel;
+  FMemoServicos.Font.Name := 'Consolas';
+  FMemoServicos.Font.Size := 8;
+  FMemoServicos.Font.Color := ClrTextMuted;
   FMemoServicos.ScrollBars := ssNone;
-  FMemoServicos.SetBounds(12, 358, ClientWidth - 24, 100);
+  FMemoServicos.SetBounds(12, Y, ClientWidth - 24, 100);
   FMemoServicos.Anchors := [akLeft, akTop, akRight];
 
-  Divisor2 := TBevel.Create(Self);
+  Y := Y + 100 + 12;
+
+  Divisor2 := TPanel.Create(Self);
   Divisor2.Parent := Self;
-  Divisor2.Shape := bsTopLine;
-  Divisor2.SetBounds(12, 464, ClientWidth - 24, 8);
+  Divisor2.BevelOuter := bvNone;
+  Divisor2.Color := ClrBorderSoft;
+  Divisor2.SetBounds(12, Y, ClientWidth - 24, 1);
   Divisor2.Anchors := [akLeft, akTop, akRight];
+
+  Y := Y + 13;
 
   LblComandos := TLabel.Create(Self);
   LblComandos.Parent := Self;
-  LblComandos.Caption := 'Comandos';
+  LblComandos.Caption := 'COMANDOS';
   LblComandos.Font.Style := [fsBold];
-  LblComandos.SetBounds(12, 480, 300, 18);
+  LblComandos.Font.Size := 8;
+  LblComandos.Font.Color := ClrTextMuted;
+  LblComandos.SetBounds(14, Y, 300, 16);
+
+  Y := Y + 20;
 
   FScrollComandos := TScrollBox.Create(Self);
   FScrollComandos.Parent := Self;
-  FScrollComandos.SetBounds(12, 502, ClientWidth - 24, ClientHeight - 514);
-  FScrollComandos.Anchors := [akLeft, akTop, akRight, akBottom];
+  FScrollComandos.Color := ClrBgPanel;
   FScrollComandos.BorderStyle := bsNone;
+  FScrollComandos.SetBounds(12, Y, ClientWidth - 24, ClientHeight - Y - 12);
+  FScrollComandos.Anchors := [akLeft, akTop, akRight, akBottom];
 end;
 
 procedure TFormPrincipal.PosicionarNaLateral;
@@ -241,11 +404,19 @@ begin
     AtualizarModoDev;
 end;
 
+procedure TFormPrincipal.LimparItensSessoes;
+var
+  I: Integer;
+begin
+  for I := 0 to FListaSessoes.Items.Count - 1 do
+    FListaSessoes.Items.Objects[I].Free;
+end;
+
 procedure TFormPrincipal.AtualizarSessoes;
 var
   Sessoes: TArray<TSessaoInfo>;
   Info: TSessaoInfo;
-  Texto, IdCurto: string;
+  Item: TItemSessaoUI;
   IndiceSelecionado: Integer;
 begin
   SessionStatusStore.RemoverInativas(SegundosLimiteSessaoInativa);
@@ -254,13 +425,19 @@ begin
   IndiceSelecionado := FListaSessoes.ItemIndex;
   FListaSessoes.Items.BeginUpdate;
   try
+    LimparItensSessoes;
     FListaSessoes.Items.Clear;
+
     for Info in Sessoes do
     begin
-      IdCurto := Copy(Info.SessionId, 1, 8);
-      Texto := Format('%s  [%s]'#13'%s', [IdCurto, TextoStatus(Info.Status), Info.Cwd]);
-      FListaSessoes.Items.AddObject(Texto, TObject(Ord(Info.Status)));
+      Item := TItemSessaoUI.Create;
+      Item.SessionId := Copy(Info.SessionId, 1, 8);
+      Item.Cwd := Info.Cwd;
+      Item.Status := Info.Status;
+      Item.UltimoEvento := Info.UltimoEvento;
+      FListaSessoes.Items.AddObject(Item.SessionId, Item);
     end;
+
     if (IndiceSelecionado >= 0) and (IndiceSelecionado < FListaSessoes.Items.Count) then
       FListaSessoes.ItemIndex := IndiceSelecionado;
   finally
@@ -269,25 +446,69 @@ begin
 end;
 
 procedure TFormPrincipal.ListaSessoesDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
+const
+  LarguraFaixa = 3;
+  Margem = 10;
 var
   ListBox: TListBox;
-  Status: TStatusSessao;
-  Linhas: TArray<string>;
+  Item: TItemSessaoUI;
+  CorPrincipal, CorFundo: TColor;
+  TextoStatusStr, TextoTempo, TextoCwd: string;
+  LarguraPill, LarguraCwdMax: Integer;
+  RectPill: TRect;
 begin
   ListBox := Control as TListBox;
-  Status := TStatusSessao(NativeInt(ListBox.Items.Objects[Index]));
+  Item := TItemSessaoUI(ListBox.Items.Objects[Index]);
 
-  ListBox.Canvas.Brush.Color := CorStatus(Status);
+  ListBox.Canvas.Brush.Color := ClrBgPanel2;
+  ListBox.Canvas.Pen.Color := ClrBgPanel2;
   ListBox.Canvas.FillRect(Rect);
 
-  Linhas := ListBox.Items[Index].Split([#13]);
+  CorPrincipal := CorPrincipalStatus(Item.Status);
+  CorFundo := CorFundoStatus(Item.Status);
+
+  ListBox.Canvas.Brush.Color := CorPrincipal;
+  ListBox.Canvas.FillRect(TRect.Create(Rect.Left, Rect.Top, Rect.Left + LarguraFaixa, Rect.Bottom));
+
+  // id da sessão (linha 1) e diretório (linha 2), em monoespaçada
+  ListBox.Canvas.Brush.Style := bsClear;
+  ListBox.Canvas.Font.Name := 'Consolas';
+  ListBox.Canvas.Font.Size := 9;
+  ListBox.Canvas.Font.Style := [];
+  ListBox.Canvas.Font.Color := ClrText;
+  ListBox.Canvas.TextOut(Rect.Left + LarguraFaixa + Margem, Rect.Top + 5, Item.SessionId);
+
+  TextoStatusStr := TextoStatus(Item.Status);
   ListBox.Canvas.Font.Style := [fsBold];
-  ListBox.Canvas.TextOut(Rect.Left + 8, Rect.Top + 3, Linhas[0]);
-  if Length(Linhas) > 1 then
-  begin
-    ListBox.Canvas.Font.Style := [];
-    ListBox.Canvas.TextOut(Rect.Left + 8, Rect.Top + 18, Linhas[1]);
-  end;
+  ListBox.Canvas.Font.Size := 8;
+  ListBox.Canvas.Font.Color := CorPrincipal;
+  LarguraPill := ListBox.Canvas.TextWidth(TextoStatusStr) + 16;
+
+  RectPill.Left := Rect.Right - LarguraPill - Margem;
+  RectPill.Right := Rect.Right - Margem;
+  RectPill.Top := Rect.Top + 6;
+  RectPill.Bottom := RectPill.Top + 16;
+
+  ListBox.Canvas.Brush.Style := bsSolid;
+  ListBox.Canvas.Brush.Color := CorFundo;
+  ListBox.Canvas.Pen.Color := CorFundo;
+  ListBox.Canvas.RoundRect(RectPill.Left, RectPill.Top, RectPill.Right, RectPill.Bottom, 10, 10);
+
+  ListBox.Canvas.Brush.Style := bsClear;
+  ListBox.Canvas.TextOut(RectPill.Left + 8, RectPill.Top + 1, TextoStatusStr);
+
+  TextoTempo := TempoRelativo(SecondsBetween(Now, Item.UltimoEvento));
+  ListBox.Canvas.Font.Style := [];
+  ListBox.Canvas.Font.Name := 'Segoe UI';
+  ListBox.Canvas.Font.Color := ClrTextFaint;
+  ListBox.Canvas.TextOut(Rect.Right - ListBox.Canvas.TextWidth(TextoTempo) - Margem, RectPill.Bottom + 3, TextoTempo);
+
+  LarguraCwdMax := (RectPill.Left - Margem) - (Rect.Left + LarguraFaixa + Margem);
+  ListBox.Canvas.Font.Name := 'Consolas';
+  ListBox.Canvas.Font.Size := 8;
+  ListBox.Canvas.Font.Color := ClrTextFaint;
+  TextoCwd := TruncarInicio(ListBox.Canvas, Item.Cwd, LarguraCwdMax);
+  ListBox.Canvas.TextOut(Rect.Left + LarguraFaixa + Margem, Rect.Top + 22, TextoCwd);
 end;
 
 procedure TFormPrincipal.AtualizarModoDev;
@@ -296,7 +517,11 @@ var
   Ligado: Boolean;
 begin
   Ligado := ModoDesenvolvimentoRodando;
-  FLblModoDev.Caption := 'Status: ' + IfThen(Ligado, 'ligado', 'desligado');
+  FLblModoDev.Caption := IfThen(Ligado, 'Ligado', 'Desligado');
+  if Ligado then
+    FLblModoDev.Font.Color := ClrAccent
+  else
+    FLblModoDev.Font.Color := ClrTextMuted;
   FBtnModoDev.Caption := IfThen(Ligado, 'Desativar', 'Ativar');
 
   FMemoServicos.Lines.BeginUpdate;
@@ -305,8 +530,8 @@ begin
     for Item in ServicosModoDesenvolvimento do
     begin
       case StatusDoServico(Item.Nome) of
-        stRodando:  FMemoServicos.Lines.Add(Item.Descricao + ': rodando');
-        stParado:   FMemoServicos.Lines.Add(Item.Descricao + ': parado');
+        stRodando:   FMemoServicos.Lines.Add(Item.Descricao + ': rodando');
+        stParado:    FMemoServicos.Lines.Add(Item.Descricao + ': parado');
         stIniciando: FMemoServicos.Lines.Add(Item.Descricao + ': iniciando...');
         stParando:   FMemoServicos.Lines.Add(Item.Descricao + ': parando...');
       else
@@ -368,23 +593,52 @@ begin
 end;
 
 procedure TFormPrincipal.MontarBotoesComandos;
+const
+  OrdemCategorias: array[0..3] of string = ('Compilar', 'Serviços', 'SVN', 'Outros');
 var
-  I: Integer;
-  Botao: TButton;
-  TopoAtual: Integer;
+  Categoria: string;
+  I, TopoAtual: Integer;
+  Botao: TBotaoComando;
+  LblGrupo: TLabel;
+  PrimeiroDoGrupo: Boolean;
 begin
   FBats := ListarBats;
-  TopoAtual := 4;
-  for I := 0 to High(FBats) do
+  TopoAtual := 2;
+  for Categoria in OrdemCategorias do
   begin
-    Botao := TButton.Create(Self);
-    Botao.Parent := FScrollComandos;
-    Botao.Caption := FBats[I].Nome;
-    Botao.Tag := I;
-    Botao.OnClick := BotaoBatClick;
-    Botao.SetBounds(4, TopoAtual, FScrollComandos.ClientWidth - 24, 28);
-    Botao.Anchors := [akLeft, akTop, akRight];
-    Inc(TopoAtual, 34);
+    PrimeiroDoGrupo := True;
+    for I := 0 to High(FBats) do
+    begin
+      if CategoriaBat(FBats[I].Nome) <> Categoria then
+        Continue;
+
+      if PrimeiroDoGrupo then
+      begin
+        LblGrupo := TLabel.Create(Self);
+        LblGrupo.Parent := FScrollComandos;
+        LblGrupo.Caption := AnsiUpperCase(Categoria);
+        LblGrupo.Font.Size := 8;
+        LblGrupo.Font.Style := [fsBold];
+        LblGrupo.Font.Color := ClrTextFaint;
+        LblGrupo.SetBounds(2, TopoAtual, FScrollComandos.ClientWidth - 24, 14);
+        Inc(TopoAtual, 18);
+        PrimeiroDoGrupo := False;
+      end;
+
+      Botao := TBotaoComando.Create(Self);
+      Botao.Parent := FScrollComandos;
+      Botao.Flat := True;
+      Botao.Color := ClrBgPanel2;
+      Botao.Font.Color := ClrText;
+      Botao.Caption := '   ' + FBats[I].Nome;
+      Botao.Tag := I;
+      Botao.OnClick := BotaoBatClick;
+      Botao.SetBounds(2, TopoAtual, FScrollComandos.ClientWidth - 20, 28);
+      Botao.Anchors := [akLeft, akTop, akRight];
+      Inc(TopoAtual, 32);
+    end;
+    if not PrimeiroDoGrupo then
+      Inc(TopoAtual, 8);
   end;
 end;
 
@@ -392,7 +646,7 @@ procedure TFormPrincipal.BotaoBatClick(Sender: TObject);
 var
   Indice: Integer;
 begin
-  Indice := (Sender as TButton).Tag;
+  Indice := (Sender as TBotaoComando).Tag;
   if (Indice < 0) or (Indice > High(FBats)) then
     Exit;
   try

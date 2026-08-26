@@ -14,6 +14,7 @@ object FormPrincipal: TFormPrincipal
   OldCreateOrder = False
   Position = poDesigned
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 15
   object TrayIcon: TTrayIcon

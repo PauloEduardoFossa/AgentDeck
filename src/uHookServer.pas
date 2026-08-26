@@ -98,20 +98,21 @@ begin
       Result := ssOcioso;
     end);
 
-  // Notification cobre vários casos (permission_prompt, idle_prompt, etc).
-  // Só permission_prompt e idle_prompt têm significado claro pro painel.
-  RegistrarRotaHook('/hooks/notification',
+  // O evento Notification cobre vários casos (permission_prompt, idle_prompt,
+  // auth_success, etc.). A doc oficial não documenta um campo no corpo do
+  // JSON que diga qual é — só documenta os valores de "matcher" usados pra
+  // filtrar QUANDO cada hook dispara. Por isso a distinção é feita no
+  // settings.json (matcher separado por rota), não por um campo no payload.
+  RegistrarRotaHook('/hooks/notification/permission-prompt',
     function(Obj: TJSONObject): TStatusSessao
-    var
-      TipoNotificacao: string;
     begin
-      TipoNotificacao := CampoTexto(Obj, 'notification_type');
-      if TipoNotificacao = 'permission_prompt' then
-        Result := ssEsperandoPermissao
-      else if TipoNotificacao = 'idle_prompt' then
-        Result := ssOcioso
-      else
-        Result := ssProcessando;
+      Result := ssEsperandoPermissao;
+    end);
+
+  RegistrarRotaHook('/hooks/notification/idle-prompt',
+    function(Obj: TJSONObject): TStatusSessao
+    begin
+      Result := ssOcioso;
     end);
 end;
 
