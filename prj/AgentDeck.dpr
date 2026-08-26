@@ -8,6 +8,8 @@ uses
   uBatRunner in '..\src\uBatRunner.pas',
   uHookServer in '..\src\uHookServer.pas';
 
+{$R *.res}
+
 begin
   Application.Initialize;
   Application.MainFormOnTaskbar := True;

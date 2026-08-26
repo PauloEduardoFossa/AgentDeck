@@ -48,6 +48,7 @@
         <DCC_Define>HORSE_VCL;$(DCC_Define)</DCC_Define>
         <DCC_UnitSearchPath>..\modules\horse\src;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <Manifest_File>AgentDeck.manifest</Manifest_File>
+        <Icon_MainIcon>..\img\AgentDeck.ico</Icon_MainIcon>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win32)'!=''">
         <DCC_UseMSBuildExternally>true</DCC_UseMSBuildExternally>
