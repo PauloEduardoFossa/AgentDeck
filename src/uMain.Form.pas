@@ -158,6 +158,26 @@ begin
     Result := 'Outros';
 end;
 
+const
+  // Comandos de compilação pouco usados, ocultados do painel pra evitar
+  // scrollbar na lista de comandos.
+  ComandosOcultos: array[0..3] of string = (
+    'Compilar - Gerar ServerERP',
+    'Compilar - Gerar TopACBrBoletoService',
+    'Compilar - Gerar TopNFCeService',
+    'Compilar - Gerar TopServerService'
+  );
+
+function ComandoOculto(const Nome: string): Boolean;
+var
+  Item: string;
+begin
+  for Item in ComandosOcultos do
+    if SameText(Item, Nome) then
+      Exit(True);
+  Result := False;
+end;
+
 procedure TFormPrincipal.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
@@ -183,6 +203,8 @@ begin
   TrayIcon.Icon := Application.Icon;
   TrayIcon.Hint := 'AgentDeck';
   TrayIcon.Visible := True;
+
+  MostrarPainel;
 
   try
     IniciarServidorHooks;
@@ -610,6 +632,8 @@ begin
     for I := 0 to High(FBats) do
     begin
       if CategoriaBat(FBats[I].Nome) <> Categoria then
+        Continue;
+      if ComandoOculto(FBats[I].Nome) then
         Continue;
 
       if PrimeiroDoGrupo then
