@@ -1,3 +1,5 @@
+/dcu/
+/bin/
 Win32/
 *.dcu
 *.local
