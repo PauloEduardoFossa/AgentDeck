@@ -87,6 +87,9 @@
         <DCCReference Include="..\src\uServiceControl.pas"/>
         <DCCReference Include="..\src\uBatRunner.pas"/>
         <DCCReference Include="..\src\uHookServer.pas"/>
+        <DCCReference Include="..\src\uSvnBranch.pas"/>
+        <DCCReference Include="..\src\uConfiguracoes.pas"/>
+        <DCCReference Include="..\src\uOpenVpn.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

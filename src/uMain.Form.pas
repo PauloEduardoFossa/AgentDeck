@@ -6,7 +6,8 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
   System.Types, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
   Vcl.StdCtrls, Vcl.Buttons, Vcl.Menus, System.Generics.Collections, System.DateUtils,
-  System.StrUtils, uSessionStatus, uServiceControl, uBatRunner, uHookServer;
+  System.StrUtils, uSessionStatus, uServiceControl, uBatRunner, uHookServer, uSvnBranch,
+  uConfiguracoes, uOpenVpn;
 
 type
   // TSpeedButton não publica Color (protected em TGraphicControl); sem isso
@@ -28,6 +29,7 @@ type
   TFormPrincipal = class(TForm)
     TrayIcon: TTrayIcon;
     TimerAtualiza: TTimer;
+    TimerBranch: TTimer;
     PopupTray: TPopupMenu;
     ItemAbrir: TMenuItem;
     ItemSair: TMenuItem;
@@ -35,6 +37,7 @@ type
     procedure FormDestroy(Sender: TObject);
     procedure TrayIconDblClick(Sender: TObject);
     procedure TimerAtualizaTimer(Sender: TObject);
+    procedure TimerBranchTimer(Sender: TObject);
     procedure ItemAbrirClick(Sender: TObject);
     procedure ItemSairClick(Sender: TObject);
   private
@@ -44,18 +47,24 @@ type
     FMemoServicos: TMemo;
     FScrollComandos: TScrollBox;
     FDotHooks: TShape;
+    FLblBranch: TLabel;
+    FItemMonitor: TMenuItem;
     FAtualizandoModoDev: Boolean;
+    FAtualizandoBranch: Boolean;
     FBats: TArray<TBatInfo>;
 
     procedure MontarLayout;
     procedure PosicionarNaLateral;
     procedure AtualizarSessoes;
     procedure AtualizarModoDev;
+    procedure AtualizarBranchSVN;
     procedure MontarBotoesComandos;
+    procedure MontarMenuMonitores;
     procedure LimparItensSessoes;
     procedure ListaSessoesDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
     procedure BtnModoDevClick(Sender: TObject);
     procedure BotaoBatClick(Sender: TObject);
+    procedure ItemMonitorClick(Sender: TObject);
     procedure MostrarPainel;
     procedure MostrarBalao(const Titulo, Texto: string; Flags: TBalloonFlags);
     procedure NaThreadPrincipal(const Proc: TThreadProcedure);
@@ -159,6 +168,11 @@ begin
 end;
 
 const
+  // Projeto usado como referência pra mostrar a branch SVN atual no
+  // cabeçalho — C:\TopSystem\Delphi tem vários working copies SVN
+  // independentes, o TopERP é o projeto principal/flagship.
+  CaminhoSVNReferencia = 'C:\TopSystem\Delphi\TopERP';
+
   // Comandos de compilação pouco usados, ocultados do painel pra evitar
   // scrollbar na lista de comandos.
   ComandosOcultos: array[0..3] of string = (
@@ -195,10 +209,12 @@ begin
   Font.Color := ClrText;
 
   MontarLayout;
+  MontarMenuMonitores;
   PosicionarNaLateral;
   MontarBotoesComandos;
   AtualizarSessoes;
   AtualizarModoDev;
+  AtualizarBranchSVN;
 
   TrayIcon.Icon := Application.Icon;
   TrayIcon.Hint := 'AgentDeck';
@@ -244,7 +260,7 @@ var
   PnlHeader: TPanel;
   Marca: TShape;
   LblApp, LblHook: TLabel;
-  LblSessoes, LblModoDevTitulo, LblComandos: TLabel;
+  LblSessoes, LblModoDevTitulo: TLabel;
   Divisor1, Divisor2: TPanel;
   Y: Integer;
 begin
@@ -284,6 +300,16 @@ begin
   LblHook.Font.Size := 8;
   LblHook.Font.Color := ClrTextFaint;
   LblHook.SetBounds(62, 27, 180, 14);
+
+  FLblBranch := TLabel.Create(Self);
+  FLblBranch.Parent := PnlHeader;
+  FLblBranch.Caption := '';
+  FLblBranch.Alignment := taRightJustify;
+  FLblBranch.Font.Name := 'Consolas';
+  FLblBranch.Font.Size := 8;
+  FLblBranch.Font.Color := ClrTextMuted;
+  FLblBranch.SetBounds(ClientWidth - 166, 10, 152, 16);
+  FLblBranch.Anchors := [akTop, akRight];
 
   Y := AlturaCabecalho + 12;
 
@@ -365,16 +391,6 @@ begin
 
   Y := Y + 13;
 
-  LblComandos := TLabel.Create(Self);
-  LblComandos.Parent := Self;
-  LblComandos.Caption := 'COMANDOS';
-  LblComandos.Font.Style := [fsBold];
-  LblComandos.Font.Size := 8;
-  LblComandos.Font.Color := ClrTextMuted;
-  LblComandos.SetBounds(14, Y, 300, 16);
-
-  Y := Y + 20;
-
   FScrollComandos := TScrollBox.Create(Self);
   FScrollComandos.Parent := Self;
   FScrollComandos.Color := ClrBgPanel;
@@ -385,9 +401,14 @@ end;
 
 procedure TFormPrincipal.PosicionarNaLateral;
 var
+  Indice: Integer;
   Area: TRect;
 begin
-  Area := Screen.WorkAreaRect;
+  Indice := MonitorPreferido;
+  if (Indice < 0) or (Indice > Screen.MonitorCount - 1) then
+    Indice := Screen.PrimaryMonitor.MonitorNum;
+
+  Area := Screen.Monitors[Indice].WorkareaRect;
   Width := 340;
   Height := Area.Height;
   Left := Area.Right - Width;
@@ -399,6 +420,8 @@ begin
   PosicionarNaLateral;
   Show;
   SetForegroundWindow(Handle);
+  if not FAtualizandoBranch then
+    AtualizarBranchSVN;
 end;
 
 procedure TFormPrincipal.TrayIconDblClick(Sender: TObject);
@@ -424,6 +447,12 @@ begin
   AtualizarSessoes;
   if not FAtualizandoModoDev then
     AtualizarModoDev;
+end;
+
+procedure TFormPrincipal.TimerBranchTimer(Sender: TObject);
+begin
+  if not FAtualizandoBranch then
+    AtualizarBranchSVN;
 end;
 
 procedure TFormPrincipal.LimparItensSessoes;
@@ -565,6 +594,38 @@ begin
   end;
 end;
 
+procedure TFormPrincipal.AtualizarBranchSVN;
+begin
+  if FAtualizandoBranch then
+    Exit;
+  FAtualizandoBranch := True;
+
+  TThread.CreateAnonymousThread(
+    procedure
+    var
+      Branch: string;
+    begin
+      Branch := BranchAtualSVN(CaminhoSVNReferencia);
+      NaThreadPrincipal(
+        procedure
+        begin
+          FAtualizandoBranch := False;
+          if Branch <> '' then
+          begin
+            FLblBranch.Caption := Branch;
+            FLblBranch.Font.Color := ClrTextMuted;
+            FLblBranch.Hint := 'TopERP: ' + Branch;
+            FLblBranch.ShowHint := True;
+          end
+          else
+          begin
+            FLblBranch.Caption := '';
+            FLblBranch.ShowHint := False;
+          end;
+        end);
+    end).Start;
+end;
+
 procedure TFormPrincipal.BtnModoDevClick(Sender: TObject);
 var
   Ligar: Boolean;
@@ -593,9 +654,17 @@ begin
         end;
       try
         if Ligar then
-          AtivarModoDesenvolvimento(Progresso)
+        begin
+          Progresso('Conectando na VPN...');
+          ConectarVPN;
+          AtivarModoDesenvolvimento(Progresso);
+        end
         else
+        begin
           DesativarModoDesenvolvimento(Progresso);
+          Progresso('Desconectando da VPN...');
+          DesconectarVPN;
+        end;
       except
         on E: Exception do
           NaThreadPrincipal(
@@ -679,6 +748,44 @@ begin
     on E: Exception do
       MostrarBalao('AgentDeck', 'Erro ao executar: ' + E.Message, bfError);
   end;
+end;
+
+procedure TFormPrincipal.MontarMenuMonitores;
+var
+  I, PreferidoAtual: Integer;
+  Item: TMenuItem;
+begin
+  FItemMonitor := TMenuItem.Create(Self);
+  FItemMonitor.Caption := 'Monitor';
+  PopupTray.Items.Insert(1, FItemMonitor);
+
+  PreferidoAtual := MonitorPreferido;
+  if (PreferidoAtual < 0) or (PreferidoAtual > Screen.MonitorCount - 1) then
+    PreferidoAtual := Screen.PrimaryMonitor.MonitorNum;
+
+  for I := 0 to Screen.MonitorCount - 1 do
+  begin
+    Item := TMenuItem.Create(Self);
+    Item.Caption := Format('Monitor %d (%dx%d)%s',
+      [I + 1, Screen.Monitors[I].Width, Screen.Monitors[I].Height,
+       IfThen(Screen.Monitors[I].Primary, ' — principal', '')]);
+    Item.RadioItem := True;
+    Item.GroupIndex := 1;
+    Item.Tag := I;
+    Item.Checked := I = PreferidoAtual;
+    Item.OnClick := ItemMonitorClick;
+    FItemMonitor.Add(Item);
+  end;
+end;
+
+procedure TFormPrincipal.ItemMonitorClick(Sender: TObject);
+var
+  Indice: Integer;
+begin
+  Indice := (Sender as TMenuItem).Tag;
+  SalvarMonitorPreferido(Indice);
+  if Visible then
+    PosicionarNaLateral;
 end;
 
 end.

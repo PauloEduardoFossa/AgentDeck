@@ -29,6 +29,12 @@ object FormPrincipal: TFormPrincipal
     Left = 56
     Top = 16
   end
+  object TimerBranch: TTimer
+    Interval = 60000
+    OnTimer = TimerBranchTimer
+    Left = 56
+    Top = 64
+  end
   object PopupTray: TPopupMenu
     Left = 96
     Top = 16

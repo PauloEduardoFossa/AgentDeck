@@ -6,7 +6,10 @@ uses
   uSessionStatus in '..\src\uSessionStatus.pas',
   uServiceControl in '..\src\uServiceControl.pas',
   uBatRunner in '..\src\uBatRunner.pas',
-  uHookServer in '..\src\uHookServer.pas';
+  uHookServer in '..\src\uHookServer.pas',
+  uSvnBranch in '..\src\uSvnBranch.pas',
+  uConfiguracoes in '..\src\uConfiguracoes.pas',
+  uOpenVpn in '..\src\uOpenVpn.pas';
 
 {$R *.res}
 
