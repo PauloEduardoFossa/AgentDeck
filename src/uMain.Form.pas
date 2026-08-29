@@ -179,11 +179,12 @@ const
 
   // Comandos de compilação pouco usados, ocultados do painel pra evitar
   // scrollbar na lista de comandos.
-  ComandosOcultos: array[0..3] of string = (
+  ComandosOcultos: array[0..4] of string = (
     'Compilar - Gerar ServerERP',
     'Compilar - Gerar TopACBrBoletoService',
     'Compilar - Gerar TopNFCeService',
-    'Compilar - Gerar TopServerService'
+    'Compilar - Gerar TopServerService',
+    'Compilar - Gerar TopPDVe'
   );
 
 function ComandoOculto(const Nome: string): Boolean;
@@ -228,6 +229,12 @@ end;
 procedure TFormPrincipal.FormCreate(Sender: TObject);
 begin
   BorderStyle := bsNone;
+  // Sem isso, em monitores com work area mais baixa que o conteudo fixo
+  // (cards + sessoes + modo dev + memo), o TForm.AutoScroll (True por
+  // padrao) poe uma barra de rolagem em volta do painel inteiro. Quem deve
+  // rolar e so o FScrollComandos (lista de comandos), que ja e um
+  // TScrollBox proprio ancorado embaixo.
+  AutoScroll := False;
   Color := ClrBgPanel;
   Font.Name := 'Segoe UI';
   Font.Size := 9;
@@ -419,10 +426,12 @@ begin
   FListaSessoes.BorderStyle := bsNone;
   FListaSessoes.Color := ClrBgPanel;
   FListaSessoes.OnDrawItem := ListaSessoesDrawItem;
-  FListaSessoes.SetBounds(12, Y + 18, ClientWidth - 24, 190);
+  // Altura fixa em 3 * ItemHeight — mostra exatamente 3 sessões sem cortar
+  // nenhuma pela metade; sessões extras rolam dentro da própria lista.
+  FListaSessoes.SetBounds(12, Y + 18, ClientWidth - 24, 3 * FListaSessoes.ItemHeight);
   FListaSessoes.Anchors := [akLeft, akTop, akRight];
 
-  Y := Y + 18 + 190 + 12;
+  Y := Y + 18 + FListaSessoes.Height + 12;
 
   Divisor1 := TPanel.Create(Self);
   Divisor1.Parent := Self;
@@ -824,12 +833,12 @@ begin
       Botao.Caption := '   ' + FBats[I].Nome;
       Botao.Tag := I;
       Botao.OnClick := BotaoBatClick;
-      Botao.SetBounds(2, TopoAtual, FScrollComandos.ClientWidth - 20, 28);
+      Botao.SetBounds(2, TopoAtual, FScrollComandos.ClientWidth - 20, 26);
       Botao.Anchors := [akLeft, akTop, akRight];
-      Inc(TopoAtual, 32);
+      Inc(TopoAtual, 29);
     end;
     if not PrimeiroDoGrupo then
-      Inc(TopoAtual, 8);
+      Inc(TopoAtual, 4);
   end;
 end;
 
