@@ -733,6 +733,7 @@ begin
     procedure
     var
       Progresso: TProgressoModoDev;
+      MensagemErro: string;
     begin
       Progresso :=
         procedure(const Mensagem: string)
@@ -758,11 +759,17 @@ begin
         end;
       except
         on E: Exception do
+        begin
+          // Captura o texto aqui: TThread.Queue e assincrono, entao o objeto E
+          // ja estara liberado quando a procedure abaixo realmente rodar na
+          // thread principal (E.Message la dentro leria memoria liberada).
+          MensagemErro := E.ClassName + ': ' + E.Message;
           NaThreadPrincipal(
             procedure
             begin
-              MostrarBalao('AgentDeck', 'Erro no Modo Desenvolvimento: ' + E.Message, bfError);
+              MostrarBalao('AgentDeck', 'Erro no Modo Desenvolvimento: ' + MensagemErro, bfError);
             end);
+        end;
       end;
       NaThreadPrincipal(
         procedure
@@ -936,7 +943,7 @@ begin
   TThread.CreateAnonymousThread(
     procedure
     var
-      CaminhoPastaGerada: string;
+      CaminhoPastaGerada, MensagemErro: string;
     begin
       try
         CaminhoPastaGerada := GerarPastaTicket(Numero, TiFluxApiKey, PastaBaseTickets);
@@ -948,11 +955,36 @@ begin
           end);
       except
         on E: Exception do
+        begin
+          // Captura o texto aqui: TThread.Queue e assincrono, entao o objeto E
+          // ja estara liberado quando a procedure abaixo realmente rodar na
+          // thread principal (E.Message la dentro leria memoria liberada).
+          MensagemErro := E.ClassName + ': ' + E.Message;
           NaThreadPrincipal(
             procedure
+            var
+              TituloManual, CaminhoManual: string;
             begin
-              MostrarBalao('AgentDeck', 'Erro ao gerar ticket #' + Numero + ': ' + E.Message, bfError);
+              // Falhou a consulta no tiFlux (token invalido, rede, etc.): cai
+              // pro mesmo fallback do fluxo "sem chave de API" — pergunta o
+              // titulo e cria so o esqueleto (pasta + Ticket.md vazio).
+              MostrarBalao('AgentDeck',
+                'Não foi possível consultar o ticket #' + Numero + ' no tiFlux (' + MensagemErro + ').',
+                bfWarning);
+
+              TituloManual := '';
+              InputQuery('Novo Ticket', 'Título do ticket (opcional, pra nomear a pasta):', TituloManual);
+              try
+                CaminhoManual := CriarPastaTicketManual(Numero, Trim(TituloManual), PastaBaseTickets);
+                MostrarBalao('AgentDeck', 'Pasta do ticket #' + Numero + ' criada em: ' + CaminhoManual, bfInfo);
+                ShellExecute(0, 'open', PChar(CaminhoManual), nil, nil, SW_SHOWNORMAL);
+              except
+                on E2: Exception do
+                  MostrarBalao('AgentDeck',
+                    'Erro ao criar pasta do ticket #' + Numero + ': ' + E2.ClassName + ': ' + E2.Message, bfError);
+              end;
             end);
+        end;
       end;
       NaThreadPrincipal(
         procedure
