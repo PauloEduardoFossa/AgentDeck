@@ -9,7 +9,11 @@ uses
   uHookServer in '..\src\uHookServer.pas',
   uSvnBranch in '..\src\uSvnBranch.pas',
   uConfiguracoes in '..\src\uConfiguracoes.pas',
-  uOpenVpn in '..\src\uOpenVpn.pas';
+  uOpenVpn in '..\src\uOpenVpn.pas',
+  uSanitizacao in '..\src\uSanitizacao.pas',
+  uHtmlTexto in '..\src\uHtmlTexto.pas',
+  uTiFlux in '..\src\uTiFlux.pas',
+  uTicketDocs in '..\src\uTicketDocs.pas';
 
 {$R *.res}
 

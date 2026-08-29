@@ -7,3 +7,4 @@ Win32/
 __history/
 *.stat
 *.res
+!src/Icones.res

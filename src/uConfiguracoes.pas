@@ -1,4 +1,4 @@
-unit uConfiguracoes;
+﻿unit uConfiguracoes;
 
 interface
 
@@ -7,6 +7,10 @@ procedure SalvarMonitorPreferido(Indice: Integer);
 
 function CaminhoOpenVpnGui: string;
 function PerfilVPN: string;
+
+function TiFluxApiKey: string;
+procedure SalvarTiFluxApiKey(const Chave: string);
+function PastaBaseTickets: string;
 
 implementation
 
@@ -21,6 +25,10 @@ const
   ChavePerfilVPN = 'Perfil';
   PadraoCaminhoOpenVpnGui = 'C:\Program Files\OpenVPN\bin\openvpn-gui.exe';
   PadraoPerfilVPN = 'ns1-TCP4-33132-topsystem.19-config';
+  SecaoTiFlux = 'TiFlux';
+  ChaveApiKey = 'ApiKey';
+  ChavePastaBase = 'PastaBaseTickets';
+  SubcaminhoPastaBasePadrao = 'OneDrive\Documentos\Obsidian Vault\01. ERP Top System\99. Ticket';
 
 function CaminhoArquivoConfig: string;
 var
@@ -75,6 +83,44 @@ begin
   Ini := TIniFile.Create(CaminhoArquivoConfig);
   try
     Result := Ini.ReadString(SecaoVPN, ChavePerfilVPN, PadraoPerfilVPN);
+  finally
+    Ini.Free;
+  end;
+end;
+
+function TiFluxApiKey: string;
+var
+  Ini: TIniFile;
+begin
+  Ini := TIniFile.Create(CaminhoArquivoConfig);
+  try
+    Result := Ini.ReadString(SecaoTiFlux, ChaveApiKey, '');
+  finally
+    Ini.Free;
+  end;
+end;
+
+procedure SalvarTiFluxApiKey(const Chave: string);
+var
+  Ini: TIniFile;
+begin
+  Ini := TIniFile.Create(CaminhoArquivoConfig);
+  try
+    Ini.WriteString(SecaoTiFlux, ChaveApiKey, Chave);
+  finally
+    Ini.Free;
+  end;
+end;
+
+function PastaBaseTickets: string;
+var
+  Ini: TIniFile;
+  Padrao: string;
+begin
+  Padrao := TPath.Combine(GetEnvironmentVariable('USERPROFILE'), SubcaminhoPastaBasePadrao);
+  Ini := TIniFile.Create(CaminhoArquivoConfig);
+  try
+    Result := Ini.ReadString(SecaoTiFlux, ChavePastaBase, Padrao);
   finally
     Ini.Free;
   end;

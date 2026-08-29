@@ -1,13 +1,13 @@
-unit uMain.Form;
+﻿unit uMain.Form;
 
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  Winapi.Windows, Winapi.Messages, Winapi.ShellAPI, System.SysUtils, System.Variants, System.Classes,
   System.Types, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
-  Vcl.StdCtrls, Vcl.Buttons, Vcl.Menus, System.Generics.Collections, System.DateUtils,
-  System.StrUtils, uSessionStatus, uServiceControl, uBatRunner, uHookServer, uSvnBranch,
-  uConfiguracoes, uOpenVpn;
+  Vcl.StdCtrls, Vcl.Buttons, Vcl.Menus, Vcl.Imaging.PngImage, System.Generics.Collections,
+  System.DateUtils, System.StrUtils, uSessionStatus, uServiceControl, uBatRunner, uHookServer,
+  uSvnBranch, uConfiguracoes, uOpenVpn, uTicketDocs;
 
 type
   // TSpeedButton não publica Color (protected em TGraphicControl); sem isso
@@ -48,9 +48,11 @@ type
     FScrollComandos: TScrollBox;
     FDotHooks: TShape;
     FLblBranch: TLabel;
-    FItemMonitor: TMenuItem;
+    FLblNovoTicket: TLabel;
+    FPopupMonitores: TPopupMenu;
     FAtualizandoModoDev: Boolean;
     FAtualizandoBranch: Boolean;
+    FGerandoTicket: Boolean;
     FBats: TArray<TBatInfo>;
 
     procedure MontarLayout;
@@ -59,12 +61,13 @@ type
     procedure AtualizarModoDev;
     procedure AtualizarBranchSVN;
     procedure MontarBotoesComandos;
-    procedure MontarMenuMonitores;
     procedure LimparItensSessoes;
     procedure ListaSessoesDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
     procedure BtnModoDevClick(Sender: TObject);
     procedure BotaoBatClick(Sender: TObject);
+    procedure BtnMonitorClick(Sender: TObject);
     procedure ItemMonitorClick(Sender: TObject);
+    procedure ItemNovoTicketClick(Sender: TObject);
     procedure MostrarPainel;
     procedure MostrarBalao(const Titulo, Texto: string; Flags: TBalloonFlags);
     procedure NaThreadPrincipal(const Proc: TThreadProcedure);
@@ -79,6 +82,7 @@ var
 implementation
 
 {$R *.dfm}
+{$R 'Icones.res'}
 
 const
   SegundosLimiteSessaoInativa = 12 * 3600;
@@ -192,6 +196,27 @@ begin
   Result := False;
 end;
 
+// Carrega um PNG embutido como recurso (RCDATA, ver Icones.rc) — evita
+// depender de um caminho de arquivo em disco pra achar o ícone.
+procedure CarregarIconeRecurso(const NomeRecurso: string; const Destino: TPicture);
+var
+  Stream: TResourceStream;
+  Png: TPngImage;
+begin
+  Stream := TResourceStream.Create(HInstance, NomeRecurso, RT_RCDATA);
+  try
+    Png := TPngImage.Create;
+    try
+      Png.LoadFromStream(Stream);
+      Destino.Graphic := Png;
+    finally
+      Png.Free;
+    end;
+  finally
+    Stream.Free;
+  end;
+end;
+
 procedure TFormPrincipal.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
@@ -209,7 +234,6 @@ begin
   Font.Color := ClrText;
 
   MontarLayout;
-  MontarMenuMonitores;
   PosicionarNaLateral;
   MontarBotoesComandos;
   AtualizarSessoes;
@@ -262,6 +286,9 @@ var
   LblApp, LblHook: TLabel;
   LblSessoes, LblModoDevTitulo: TLabel;
   Divisor1, Divisor2: TPanel;
+  CardTicket, CardMonitor: TPanel;
+  ImgTicket, ImgMonitor: TImage;
+  LblMonitor: TLabel;
   Y: Integer;
 begin
   PnlHeader := TPanel.Create(Self);
@@ -312,6 +339,70 @@ begin
   FLblBranch.Anchors := [akTop, akRight];
 
   Y := AlturaCabecalho + 12;
+
+  CardTicket := TPanel.Create(Self);
+  CardTicket.Parent := Self;
+  CardTicket.BevelOuter := bvNone;
+  CardTicket.Color := ClrBgPanel2;
+  CardTicket.Cursor := crHandPoint;
+  CardTicket.SetBounds(12, Y, ClientWidth - 24, 40);
+  CardTicket.Anchors := [akLeft, akTop, akRight];
+  CardTicket.OnClick := ItemNovoTicketClick;
+
+  ImgTicket := TImage.Create(Self);
+  ImgTicket.Parent := CardTicket;
+  ImgTicket.Cursor := crHandPoint;
+  ImgTicket.Center := True;
+  ImgTicket.Stretch := True;
+  ImgTicket.Proportional := True;
+  ImgTicket.SetBounds(8, 4, 32, 32);
+  ImgTicket.OnClick := ItemNovoTicketClick;
+  CarregarIconeRecurso('TICKET_NOVO', ImgTicket.Picture);
+
+  FLblNovoTicket := TLabel.Create(Self);
+  FLblNovoTicket.Parent := CardTicket;
+  FLblNovoTicket.Caption := 'Novo Ticket (tiFlux)';
+  FLblNovoTicket.Font.Style := [fsBold];
+  FLblNovoTicket.Font.Color := ClrText;
+  FLblNovoTicket.Cursor := crHandPoint;
+  FLblNovoTicket.Transparent := True;
+  FLblNovoTicket.SetBounds(50, 13, ClientWidth - 90, 18);
+  FLblNovoTicket.Anchors := [akLeft, akTop, akRight];
+  FLblNovoTicket.OnClick := ItemNovoTicketClick;
+
+  Y := Y + 40 + 8;
+
+  CardMonitor := TPanel.Create(Self);
+  CardMonitor.Parent := Self;
+  CardMonitor.BevelOuter := bvNone;
+  CardMonitor.Color := ClrBgPanel2;
+  CardMonitor.Cursor := crHandPoint;
+  CardMonitor.SetBounds(12, Y, ClientWidth - 24, 40);
+  CardMonitor.Anchors := [akLeft, akTop, akRight];
+  CardMonitor.OnClick := BtnMonitorClick;
+
+  ImgMonitor := TImage.Create(Self);
+  ImgMonitor.Parent := CardMonitor;
+  ImgMonitor.Cursor := crHandPoint;
+  ImgMonitor.Center := True;
+  ImgMonitor.Stretch := True;
+  ImgMonitor.Proportional := True;
+  ImgMonitor.SetBounds(8, 4, 32, 32);
+  ImgMonitor.OnClick := BtnMonitorClick;
+  CarregarIconeRecurso('MONITOR_ICONE', ImgMonitor.Picture);
+
+  LblMonitor := TLabel.Create(Self);
+  LblMonitor.Parent := CardMonitor;
+  LblMonitor.Caption := 'Monitor';
+  LblMonitor.Font.Style := [fsBold];
+  LblMonitor.Font.Color := ClrText;
+  LblMonitor.Cursor := crHandPoint;
+  LblMonitor.Transparent := True;
+  LblMonitor.SetBounds(50, 13, ClientWidth - 90, 18);
+  LblMonitor.Anchors := [akLeft, akTop, akRight];
+  LblMonitor.OnClick := BtnMonitorClick;
+
+  Y := Y + 40 + 12;
 
   LblSessoes := TLabel.Create(Self);
   LblSessoes.Parent := Self;
@@ -750,14 +841,19 @@ begin
   end;
 end;
 
-procedure TFormPrincipal.MontarMenuMonitores;
+// Reconstrói a lista de monitores NESTE momento (Screen.MonitorCount é
+// reavaliado a cada clique) — antes isso só era montado uma vez, no
+// FormCreate, e ficava desatualizado se um monitor fosse ligado/desligado
+// depois de o app já estar aberto.
+procedure TFormPrincipal.BtnMonitorClick(Sender: TObject);
 var
   I, PreferidoAtual: Integer;
   Item: TMenuItem;
+  PontoTela: TPoint;
 begin
-  FItemMonitor := TMenuItem.Create(Self);
-  FItemMonitor.Caption := 'Monitor';
-  PopupTray.Items.Insert(1, FItemMonitor);
+  if not Assigned(FPopupMonitores) then
+    FPopupMonitores := TPopupMenu.Create(Self);
+  FPopupMonitores.Items.Clear;
 
   PreferidoAtual := MonitorPreferido;
   if (PreferidoAtual < 0) or (PreferidoAtual > Screen.MonitorCount - 1) then
@@ -765,7 +861,7 @@ begin
 
   for I := 0 to Screen.MonitorCount - 1 do
   begin
-    Item := TMenuItem.Create(Self);
+    Item := TMenuItem.Create(FPopupMonitores);
     Item.Caption := Format('Monitor %d (%dx%d)%s',
       [I + 1, Screen.Monitors[I].Width, Screen.Monitors[I].Height,
        IfThen(Screen.Monitors[I].Primary, ' — principal', '')]);
@@ -774,8 +870,11 @@ begin
     Item.Tag := I;
     Item.Checked := I = PreferidoAtual;
     Item.OnClick := ItemMonitorClick;
-    FItemMonitor.Add(Item);
+    FPopupMonitores.Items.Add(Item);
   end;
+
+  PontoTela := Mouse.CursorPos;
+  FPopupMonitores.Popup(PontoTela.X, PontoTela.Y);
 end;
 
 procedure TFormPrincipal.ItemMonitorClick(Sender: TObject);
@@ -786,6 +885,82 @@ begin
   SalvarMonitorPreferido(Indice);
   if Visible then
     PosicionarNaLateral;
+end;
+
+procedure TFormPrincipal.ItemNovoTicketClick(Sender: TObject);
+var
+  Numero, Chave, Titulo, CaminhoPasta: string;
+begin
+  if FGerandoTicket then
+    Exit;
+
+  Numero := '';
+  if not InputQuery('Novo Ticket', 'Número do ticket no tiFlux:', Numero) then
+    Exit;
+  Numero := Trim(Numero.Replace('#', ''));
+  if Numero = '' then
+    Exit;
+
+  Chave := TiFluxApiKey;
+  if Chave = '' then
+  begin
+    if not InputQuery('tiFlux',
+      'Chave de API do tiFlux (Configurações > Minha conta > Sessões > Sessões API).' + sLineBreak +
+      'Deixe em branco pra só criar a pasta e preencher manualmente:', Chave) then
+      Exit;
+    Chave := Trim(Chave);
+
+    if Chave = '' then
+    begin
+      // Sem API configurada: cria so o esqueleto (pasta + Ticket.md vazio) pra
+      // o usuário colar as informações do tiFlux manualmente.
+      Titulo := '';
+      InputQuery('Novo Ticket', 'Título do ticket (opcional, pra nomear a pasta):', Titulo);
+      try
+        CaminhoPasta := CriarPastaTicketManual(Numero, Trim(Titulo), PastaBaseTickets);
+        MostrarBalao('AgentDeck', 'Pasta do ticket #' + Numero + ' criada em: ' + CaminhoPasta, bfInfo);
+        ShellExecute(0, 'open', PChar(CaminhoPasta), nil, nil, SW_SHOWNORMAL);
+      except
+        on E: Exception do
+          MostrarBalao('AgentDeck', 'Erro ao criar pasta do ticket #' + Numero + ': ' + E.Message, bfError);
+      end;
+      Exit;
+    end;
+
+    SalvarTiFluxApiKey(Chave);
+  end;
+
+  FGerandoTicket := True;
+  FLblNovoTicket.Caption := 'Consultando ticket #' + Numero + '...';
+
+  TThread.CreateAnonymousThread(
+    procedure
+    var
+      CaminhoPastaGerada: string;
+    begin
+      try
+        CaminhoPastaGerada := GerarPastaTicket(Numero, TiFluxApiKey, PastaBaseTickets);
+        NaThreadPrincipal(
+          procedure
+          begin
+            MostrarBalao('AgentDeck', 'Ticket #' + Numero + ' documentado em: ' + CaminhoPastaGerada, bfInfo);
+            ShellExecute(0, 'open', PChar(CaminhoPastaGerada), nil, nil, SW_SHOWNORMAL);
+          end);
+      except
+        on E: Exception do
+          NaThreadPrincipal(
+            procedure
+            begin
+              MostrarBalao('AgentDeck', 'Erro ao gerar ticket #' + Numero + ': ' + E.Message, bfError);
+            end);
+      end;
+      NaThreadPrincipal(
+        procedure
+        begin
+          FGerandoTicket := False;
+          FLblNovoTicket.Caption := 'Novo Ticket (tiFlux)';
+        end);
+    end).Start;
 end;
 
 end.

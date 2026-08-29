@@ -90,6 +90,10 @@
         <DCCReference Include="..\src\uSvnBranch.pas"/>
         <DCCReference Include="..\src\uConfiguracoes.pas"/>
         <DCCReference Include="..\src\uOpenVpn.pas"/>
+        <DCCReference Include="..\src\uSanitizacao.pas"/>
+        <DCCReference Include="..\src\uHtmlTexto.pas"/>
+        <DCCReference Include="..\src\uTiFlux.pas"/>
+        <DCCReference Include="..\src\uTicketDocs.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
