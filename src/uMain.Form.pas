@@ -68,6 +68,7 @@ type
     procedure BtnMonitorClick(Sender: TObject);
     procedure ItemMonitorClick(Sender: TObject);
     procedure ItemNovoTicketClick(Sender: TObject);
+    procedure FLblBranchClick(Sender: TObject);
     procedure MostrarPainel;
     procedure MostrarBalao(const Titulo, Texto: string; Flags: TBalloonFlags);
     procedure NaThreadPrincipal(const Proc: TThreadProcedure);
@@ -344,6 +345,8 @@ begin
   FLblBranch.Font.Color := ClrTextMuted;
   FLblBranch.SetBounds(ClientWidth - 166, 10, 152, 16);
   FLblBranch.Anchors := [akTop, akRight];
+  FLblBranch.Cursor := crHandPoint;
+  FLblBranch.OnClick := FLblBranchClick;
 
   Y := AlturaCabecalho + 12;
 
@@ -724,6 +727,14 @@ begin
           end;
         end);
     end).Start;
+end;
+
+// Clicar no nome da branch forca atualizar na hora, sem esperar o
+// TimerBranch. AtualizarBranchSVN ja ignora chamada se uma atualizacao
+// estiver rolando, entao nao precisa de guarda aqui.
+procedure TFormPrincipal.FLblBranchClick(Sender: TObject);
+begin
+  AtualizarBranchSVN;
 end;
 
 procedure TFormPrincipal.BtnModoDevClick(Sender: TObject);
