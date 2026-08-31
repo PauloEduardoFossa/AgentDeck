@@ -25,7 +25,7 @@
 | 🖥️ | **Sessões Claude Code** | Recebe hooks do Claude Code (`POST` em `http://localhost:47311`) e mostra o status de cada sessão — 🟢 ocioso, 🔵 processando, 🔴 esperando permissão — e o diretório de trabalho. |
 | ⚡ | **Modo Desenvolvimento** | Liga/desliga de uma vez os serviços do Windows do ambiente local (Firebird, TopServer, TopCIOTService, TopServerAPI, Nginx) e conecta/desconecta a VPN (OpenVPN GUI). |
 | 🌿 | **Branch SVN** | Mostra no cabeçalho a branch atual do working copy de referência (`C:\TopSystem\Delphi\TopERP`), atualizada periodicamente. |
-| ▶️ | **Runner de comandos** | Lista os `.bat`/`.lnk` de compilação, serviços e SVN configurados, agrupados por categoria. |
+| ▶️ | **Runner de comandos** | Lista os `.bat`/`.lnk` de compilação, serviços e SVN configurados, agrupados por categoria — incluindo o `Compilar - Script`, que compila um subconjunto de projetos escolhido na hora (ou só os alterados no branch SVN atual), gera os zips e envia por FTP num fluxo único guiado por menu, sem apagar o que já está em produção. |
 | <img src="img/ticket-novo-48.png" width="28" alt=""> | **Novo Ticket (tiFlux)** | Informa o número do ticket, consulta a API do tiFlux e monta `<Ano>\<Número> - <Título>\Ticket.md` com a descrição geral e as comunicações internas (Comunicação → Equipe interna), em ordem de cadastro. Sem chave de API, cria só a pasta e um `Ticket.md` vazio pra preenchimento manual. |
 | <img src="img/monitor-48.png" width="28" alt=""> | **Monitor** | Escolhe em qual monitor o painel fica ancorado; a lista é reconstruída a cada clique, refletindo monitores plugados/desplugados na hora — sem precisar reiniciar o app. |
 
