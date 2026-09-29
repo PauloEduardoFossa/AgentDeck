@@ -6,8 +6,8 @@ uses
   Winapi.Windows, Winapi.Messages, Winapi.ShellAPI, System.SysUtils, System.Variants, System.Classes,
   System.Types, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls,
   Vcl.StdCtrls, Vcl.Buttons, Vcl.Menus, Vcl.Imaging.PngImage, System.Generics.Collections,
-  System.DateUtils, System.StrUtils, uSessionStatus, uServiceControl, uBatRunner, uHookServer,
-  uSvnBranch, uConfiguracoes, uOpenVpn, uTicketDocs;
+  System.DateUtils, System.StrUtils, System.IOUtils, uSessionStatus, uServiceControl, uBatRunner,
+  uHookServer, uSvnBranch, uConfiguracoes, uOpenVpn, uTicketDocs;
 
 type
   // TSpeedButton não publica Color (protected em TGraphicControl); sem isso
@@ -916,7 +916,7 @@ end;
 
 procedure TFormPrincipal.ItemNovoTicketClick(Sender: TObject);
 var
-  Numero, Chave, Titulo, CaminhoPasta: string;
+  Numero, Ciclo, Chave, Titulo, CaminhoPasta: string;
 begin
   if FGerandoTicket then
     Exit;
@@ -927,6 +927,16 @@ begin
   Numero := Trim(Numero.Replace('#', ''));
   if Numero = '' then
     Exit;
+
+  Ciclo := CicloVigenteSugerido(PastaBaseTickets);
+  if not InputQuery('Novo Ticket', 'Ciclo do ticket (ex.: 2609):', Ciclo) then
+    Exit;
+  Ciclo := Trim(Ciclo);
+  if not CicloValido(Ciclo) then
+  begin
+    MostrarBalao('AgentDeck', 'Ciclo inválido: informe 4 dígitos (ex.: 2609).', bfWarning);
+    Exit;
+  end;
 
   Chave := TiFluxApiKey;
   if Chave = '' then
@@ -944,9 +954,8 @@ begin
       Titulo := '';
       InputQuery('Novo Ticket', 'Título do ticket (opcional, pra nomear a pasta):', Titulo);
       try
-        CaminhoPasta := CriarPastaTicketManual(Numero, Trim(Titulo), PastaBaseTickets);
+        CaminhoPasta := CriarPastaTicketManual(Numero, Ciclo, Trim(Titulo), PastaBaseTickets);
         MostrarBalao('AgentDeck', 'Pasta do ticket #' + Numero + ' criada em: ' + CaminhoPasta, bfInfo);
-        ShellExecute(0, 'open', PChar(CaminhoPasta), nil, nil, SW_SHOWNORMAL);
       except
         on E: Exception do
           MostrarBalao('AgentDeck', 'Erro ao criar pasta do ticket #' + Numero + ': ' + E.Message, bfError);
@@ -963,15 +972,24 @@ begin
   TThread.CreateAnonymousThread(
     procedure
     var
-      CaminhoPastaGerada, MensagemErro: string;
+      CaminhoPastaGerada, MensagemErro, ChaveNaThread, CaminhoLog: string;
     begin
+      CaminhoLog := TPath.Combine(
+        TPath.Combine(GetEnvironmentVariable('APPDATA'), 'AgentDeck'), 'ticket_erro.log');
+      ChaveNaThread := TiFluxApiKey;
       try
-        CaminhoPastaGerada := GerarPastaTicket(Numero, TiFluxApiKey, PastaBaseTickets);
+        TFile.AppendAllText(CaminhoLog,
+          Format('[%s] Ticket #%s — thread iniciada, ApiKey length=%d', [DateTimeToStr(Now), Numero, Length(ChaveNaThread)]) + sLineBreak,
+          TEncoding.UTF8);
+      except
+      end;
+
+      try
+        CaminhoPastaGerada := GerarPastaTicket(Numero, Ciclo, ChaveNaThread, PastaBaseTickets);
         NaThreadPrincipal(
           procedure
           begin
             MostrarBalao('AgentDeck', 'Ticket #' + Numero + ' documentado em: ' + CaminhoPastaGerada, bfInfo);
-            ShellExecute(0, 'open', PChar(CaminhoPastaGerada), nil, nil, SW_SHOWNORMAL);
           end);
       except
         on E: Exception do
@@ -980,6 +998,12 @@ begin
           // ja estara liberado quando a procedure abaixo realmente rodar na
           // thread principal (E.Message la dentro leria memoria liberada).
           MensagemErro := E.ClassName + ': ' + E.Message;
+          try
+            TFile.AppendAllText(CaminhoLog,
+              Format('[%s] Ticket #%s — excecao no handler externo: %s', [DateTimeToStr(Now), Numero, MensagemErro]) + sLineBreak,
+              TEncoding.UTF8);
+          except
+          end;
           NaThreadPrincipal(
             procedure
             var
@@ -995,9 +1019,8 @@ begin
               TituloManual := '';
               InputQuery('Novo Ticket', 'Título do ticket (opcional, pra nomear a pasta):', TituloManual);
               try
-                CaminhoManual := CriarPastaTicketManual(Numero, Trim(TituloManual), PastaBaseTickets);
+                CaminhoManual := CriarPastaTicketManual(Numero, Ciclo, Trim(TituloManual), PastaBaseTickets);
                 MostrarBalao('AgentDeck', 'Pasta do ticket #' + Numero + ' criada em: ' + CaminhoManual, bfInfo);
-                ShellExecute(0, 'open', PChar(CaminhoManual), nil, nil, SW_SHOWNORMAL);
               except
                 on E2: Exception do
                   MostrarBalao('AgentDeck',

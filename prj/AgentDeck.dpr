@@ -13,6 +13,7 @@ uses
   uSanitizacao in '..\src\uSanitizacao.pas',
   uHtmlTexto in '..\src\uHtmlTexto.pas',
   uTiFlux in '..\src\uTiFlux.pas',
+  uTicketImagens in '..\src\uTicketImagens.pas',
   uTicketDocs in '..\src\uTicketDocs.pas';
 
 {$R *.res}

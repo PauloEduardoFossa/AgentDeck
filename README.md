@@ -26,7 +26,7 @@
 | ⚡ | **Modo Desenvolvimento** | Liga/desliga de uma vez os serviços do Windows do ambiente local (Firebird, TopServer, TopCIOTService, TopServerAPI, Nginx) e conecta/desconecta a VPN (OpenVPN GUI). |
 | 🌿 | **Branch SVN** | Mostra no cabeçalho a branch atual do working copy de referência (`C:\TopSystem\Delphi\TopERP`), atualizada periodicamente. |
 | ▶️ | **Runner de comandos** | Lista os `.bat`/`.lnk` de compilação, serviços e SVN configurados, agrupados por categoria — incluindo o `Compilar - Script`, que compila um subconjunto de projetos escolhido na hora (ou só os alterados no branch SVN atual), gera os zips e envia por FTP num fluxo único guiado por menu, sem apagar o que já está em produção. |
-| <img src="img/ticket-novo-48.png" width="28" alt=""> | **Novo Ticket (tiFlux)** | Informa o número do ticket, consulta a API do tiFlux e monta `<Ano>\<Número> - <Título>\Ticket.md` com a descrição geral e as comunicações internas (Comunicação → Equipe interna), em ordem de cadastro. Sem chave de API, cria só a pasta e um `Ticket.md` vazio pra preenchimento manual. |
+| <img src="img/ticket-novo-48.png" width="28" alt=""> | **Novo Ticket (tiFlux)** | Informa o número do ticket e o ciclo (ex.: 2609, sugerido a partir da maior pasta de ciclo existente), consulta a API do tiFlux e monta `<Ciclo>\<Número> - <Título>\Ticket.md` com a descrição geral e as comunicações internas (Comunicação → Equipe interna), em ordem de cadastro. Sem chave de API, cria só a pasta e um `Ticket.md` vazio pra preenchimento manual. |
 | <img src="img/monitor-48.png" width="28" alt=""> | **Monitor** | Escolhe em qual monitor o painel fica ancorado; a lista é reconstruída a cada clique, refletindo monitores plugados/desplugados na hora — sem precisar reiniciar o app. |
 
 ## 📁 Estrutura do projeto
@@ -65,4 +65,4 @@ Config fica em `%APPDATA%\AgentDeck\settings.ini`, criado automaticamente. Princ
 | `Painel` | `Monitor` | Índice do monitor preferido (definido pelo card "Monitor"). |
 | `VPN` | `CaminhoOpenVpnGui` / `Perfil` | Caminho do OpenVPN GUI e perfil usado pelo Modo Desenvolvimento. |
 | `TiFlux` | `ApiKey` | Chave de API do tiFlux — pedida pelo app na primeira vez que "Novo Ticket" é usado; gerada em *Configurações → Minha conta → Sessões → Sessões API* no tiFlux. |
-| `TiFlux` | `PastaBaseTickets` | Pasta onde as pastas de ticket são criadas (padrão: `OneDrive\Documentos\Obsidian Vault\01. ERP Top System\99. Ticket` dentro do perfil do usuário). |
+| `TiFlux` | `PastaBaseTickets` | Pasta onde as pastas de ciclo e de ticket são criadas (padrão: `OneDrive\Documentos\Obsidian Vault\01. ERP Top System\99. Ticket` dentro do perfil do usuário). |

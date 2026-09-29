@@ -93,6 +93,7 @@
         <DCCReference Include="..\src\uSanitizacao.pas"/>
         <DCCReference Include="..\src\uHtmlTexto.pas"/>
         <DCCReference Include="..\src\uTiFlux.pas"/>
+        <DCCReference Include="..\src\uTicketImagens.pas"/>
         <DCCReference Include="..\src\uTicketDocs.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
