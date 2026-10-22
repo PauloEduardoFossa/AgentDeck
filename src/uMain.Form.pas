@@ -188,6 +188,37 @@ const
     'Compilar - Gerar TopPDVe'
   );
 
+// Nomes de arquivo que aparecem no painel com outro texto.
+function NomeExibicaoBat(const Nome: string): string;
+begin
+  if SameText(Nome, 'TrocarExeFTP') then
+    Result := 'Trocar Exe FTP'
+  else
+    Result := Nome;
+end;
+
+// Garante que o 'TrocarExeFTP' fique logo abaixo do 'zEnviaFTP' na lista.
+procedure PosicionarTrocarExeAposEnviaFTP(var Bats: TArray<TBatInfo>);
+var
+  I, Troca, Envia: Integer;
+  Item: TBatInfo;
+begin
+  Troca := -1;
+  Envia := -1;
+  for I := 0 to High(Bats) do
+    if SameText(Bats[I].Nome, 'TrocarExeFTP') then
+      Troca := I
+    else if SameText(Bats[I].Nome, 'zEnviaFTP') then
+      Envia := I;
+  if (Troca < 0) or (Envia < 0) then
+    Exit;
+  Item := Bats[Troca];
+  Delete(Bats, Troca, 1);
+  if Troca < Envia then
+    Dec(Envia);
+  Insert(Item, Bats, Envia + 1);
+end;
+
 function ComandoOculto(const Nome: string): Boolean;
 var
   Item: string;
@@ -812,6 +843,7 @@ var
   PrimeiroDoGrupo: Boolean;
 begin
   FBats := ListarBats;
+  PosicionarTrocarExeAposEnviaFTP(FBats);
   TopoAtual := 2;
   for Categoria in OrdemCategorias do
   begin
@@ -841,7 +873,7 @@ begin
       Botao.Flat := True;
       Botao.Color := ClrBgPanel2;
       Botao.Font.Color := ClrText;
-      Botao.Caption := '   ' + FBats[I].Nome;
+      Botao.Caption := '   ' + NomeExibicaoBat(FBats[I].Nome);
       Botao.Tag := I;
       Botao.OnClick := BotaoBatClick;
       Botao.SetBounds(2, TopoAtual, FScrollComandos.ClientWidth - 20, 26);
