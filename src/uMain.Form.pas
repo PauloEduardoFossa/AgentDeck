@@ -178,6 +178,9 @@ const
   // independentes, o TopERP é o projeto principal/flagship.
   CaminhoSVNReferencia = 'C:\TopSystem\Delphi\TopERP';
 
+  // Espera após abrir o OpenVPN, antes de subir Firebird e serviços.
+  SegundosEsperaVPN = 30;
+
   // Comandos de compilação pouco usados, ocultados do painel pra evitar
   // scrollbar na lista de comandos.
   ComandosOcultos: array[0..4] of string = (
@@ -785,6 +788,7 @@ begin
     var
       Progresso: TProgressoModoDev;
       MensagemErro: string;
+      Segundos: Integer;
     begin
       Progresso :=
         procedure(const Mensagem: string)
@@ -800,6 +804,15 @@ begin
         begin
           Progresso('Conectando na VPN...');
           ConectarVPN;
+          // Tempo pra conectar manualmente na VPN antes de subir o Firebird;
+          // segue adiante assim que o túnel sobe.
+          for Segundos := SegundosEsperaVPN downto 1 do
+          begin
+            if VPNConectada then
+              Break;
+            Progresso('Aguardando conexão VPN... ' + Segundos.ToString + 's');
+            Sleep(1000);
+          end;
           AtivarModoDesenvolvimento(Progresso);
         end
         else
